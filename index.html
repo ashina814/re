@@ -1,0 +1,1144 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Resonance — 共鳴する結晶</title>
+<style>
+  :root {
+    --bg: #05060a;
+    --fg: #e6f0ff;
+    --accent: #7ee7ff;
+    --accent2: #ff9be6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--bg); color: var(--fg);
+    font-family: "Hiragino Sans", "Yu Gothic UI", system-ui, -apple-system, sans-serif;
+    overflow: hidden; user-select: none;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  .hud {
+    position: fixed; pointer-events: none;
+    padding: 14px 18px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 8px rgba(126,231,255,0.3);
+  }
+  #hud-top-left    { top: 0; left: 0; }
+  #hud-top-right   { top: 0; right: 0; text-align: right; }
+  #hud-bottom-left { bottom: 0; left: 0; font-size: 12px; opacity: .55; line-height: 1.7; }
+  .label { font-size: 10px; letter-spacing: .22em; opacity: .55; text-transform: uppercase; }
+  .value { font-size: 28px; font-weight: 200; letter-spacing: .04em; }
+  .value.small { font-size: 16px; }
+
+  #chord-flash {
+    position: fixed; left: 50%; top: 28%;
+    transform: translate(-50%, -50%) scale(0.6);
+    font-size: 56px; font-weight: 100; letter-spacing: .2em;
+    color: var(--accent2);
+    text-shadow: 0 0 24px rgba(255,155,230,.6), 0 0 64px rgba(255,155,230,.3);
+    opacity: 0; pointer-events: none;
+    transition: opacity .25s ease-out, transform .7s cubic-bezier(.2,.8,.2,1);
+  }
+  #chord-flash.show {
+    opacity: 1; transform: translate(-50%, -50%) scale(1);
+  }
+
+  #title-overlay, #over-overlay {
+    position: fixed; inset: 0; display: flex;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 22px;
+    background: radial-gradient(ellipse at center, rgba(10,12,20,.4) 0%, rgba(5,6,10,.95) 70%);
+    backdrop-filter: blur(6px);
+    z-index: 10;
+  }
+  .hide { display: none !important; }
+  .title-main {
+    font-size: clamp(48px, 8vw, 108px); font-weight: 100; letter-spacing: .32em;
+    color: var(--accent);
+    text-shadow: 0 0 30px rgba(126,231,255,.5), 0 0 80px rgba(126,231,255,.25);
+  }
+  .title-sub {
+    font-size: 14px; letter-spacing: .5em; opacity: .7;
+  }
+  .btn {
+    pointer-events: auto;
+    margin-top: 10px;
+    background: transparent;
+    border: 1px solid rgba(126,231,255,.5);
+    color: var(--accent);
+    padding: 14px 34px; font-size: 14px; letter-spacing: .3em;
+    cursor: pointer; border-radius: 2px;
+    transition: all .2s;
+    font-family: inherit;
+  }
+  .btn:hover {
+    background: rgba(126,231,255,.1);
+    box-shadow: 0 0 20px rgba(126,231,255,.25);
+  }
+  .help {
+    max-width: 560px; text-align: center;
+    font-size: 13px; line-height: 1.9; opacity: .75;
+    padding: 0 24px;
+  }
+  .help b { color: var(--accent); font-weight: 400; }
+  kbd {
+    display: inline-block; padding: 1px 7px; margin: 0 2px;
+    border: 1px solid rgba(230,240,255,.3); border-radius: 3px;
+    font-size: 11px; font-family: inherit; opacity: .9;
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hud" id="hud-top-left">
+  <div class="label">score</div>
+  <div class="value" id="score">0</div>
+  <div class="label" style="margin-top:10px">chain</div>
+  <div class="value small" id="chain">—</div>
+</div>
+<div class="hud" id="hud-top-right">
+  <div class="label">level</div>
+  <div class="value" id="level">1</div>
+  <div class="label" style="margin-top:10px">next</div>
+  <div class="value small" id="next-name">◆</div>
+</div>
+<div class="hud" id="hud-bottom-left">
+  <div><kbd>WASD</kbd> 移動  <kbd>Q</kbd><kbd>E</kbd> 回転  <kbd>R</kbd> Y軸回転</div>
+  <div><kbd>Space</kbd> 落下  <kbd>マウス左</kbd> 移動/回転  <kbd>ホイール</kbd> 視点</div>
+</div>
+
+<div id="chord-flash"></div>
+
+<div id="title-overlay">
+  <div class="title-sub">RESONANCE</div>
+  <div class="title-main">共 鳴</div>
+  <div class="help">
+    3D空間に結晶のかけらを積む。同じ<b>音</b>が3つ以上くっつくと <b>共鳴</b> して砕ける。<br>
+    違う音どうしが連鎖で同時に砕けると <b>和音</b> が成立して大ボーナス。<br>
+    井戸を埋めつくす前に、美しい音列を紡いで。
+  </div>
+  <button class="btn" id="start-btn">START</button>
+  <div class="help" style="font-size:11px; opacity:.5; margin-top:8px">
+    音が出ます。音量に注意してください。
+  </div>
+</div>
+
+<div id="over-overlay" class="hide">
+  <div class="title-sub">GAME OVER</div>
+  <div class="value" style="font-size:64px; font-weight:100" id="final-score">0</div>
+  <div class="help" id="final-chord" style="min-height:1.5em"></div>
+  <button class="btn" id="retry-btn">RETRY</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/",
+    "tone": "https://unpkg.com/tone@14.8.49/build/esm/index.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }    from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }    from 'three/addons/postprocessing/OutputPass.js';
+import * as Tone from 'tone';
+
+/* ====================================================================
+   Resonance — game code
+   ==================================================================== */
+
+const GRID = { W: 4, D: 4, H: 16 };   // 井戸の底面4x4、高さ16
+const CELL = 1.0;                       // 1キューブ辺
+const BASE_DROP_MS = 900;               // レベル1の落下間隔(ms)
+
+// 5つの音（ペンタトニック：C D E G A）。各音に色とピッチ。
+const NOTES = [
+  { name: 'C', freq: 'C4', hue: 0.58, color: 0x7ee7ff },  // 氷青
+  { name: 'D', freq: 'D4', hue: 0.78, color: 0xc89dff },  // 紫
+  { name: 'E', freq: 'E4', hue: 0.90, color: 0xff9be6 },  // ピンク
+  { name: 'G', freq: 'G4', hue: 0.12, color: 0xffd27a },  // 琥珀
+  { name: 'A', freq: 'A4', hue: 0.34, color: 0x9bffb0 },  // 翡翠
+];
+
+// ポリキューブ群（テトロミノではなく、不規則4キューブ連結）
+// オフセットは (x,y,z) 整数。重心が (0,0,0) 近くに来るよう手選定。
+const SHAPES = [
+  // Tri-L (3個のL字、落下しやすい)
+  [[0,0,0],[1,0,0],[0,1,0]],
+  // Tri-stair
+  [[0,0,0],[1,0,0],[1,1,0]],
+  // Quad-T (Y字っぽい)
+  [[0,0,0],[1,0,0],[-1,0,0],[0,1,0]],
+  // Quad-S (奥行き方向にずれたS)
+  [[0,0,0],[1,0,0],[0,0,1],[1,0,1]],  // 2x2正方形
+  // Quad-stair3D
+  [[0,0,0],[1,0,0],[1,1,0],[1,0,1]],
+  // Quad-Z奥
+  [[0,0,0],[1,0,0],[1,0,1],[2,0,1]],
+  // Quad-L縦
+  [[0,0,0],[0,1,0],[0,2,0],[1,0,0]],
+  // Quad-tripod
+  [[0,0,0],[1,0,0],[0,1,0],[0,0,1]],
+  // Tri-diag（奥行きL）
+  [[0,0,0],[1,0,0],[1,0,1]],
+  // Quad-plus-head
+  [[0,0,0],[1,0,0],[2,0,0],[1,1,0]],
+];
+
+/* --- RNG ------------------------------------------------------------- */
+const rng = (() => {
+  let s = (Date.now() ^ 0x9e3779b9) >>> 0;
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 0x100000000; };
+})();
+const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+
+/* --- Grid ------------------------------------------------------------ */
+// 3D配列。各セルは null or { noteIdx, mesh }
+function makeGrid() {
+  const g = new Array(GRID.W);
+  for (let x = 0; x < GRID.W; x++) {
+    g[x] = new Array(GRID.D);
+    for (let z = 0; z < GRID.D; z++) g[x][z] = new Array(GRID.H).fill(null);
+  }
+  return g;
+}
+const inBounds = (x,y,z) => x>=0 && x<GRID.W && z>=0 && z<GRID.D && y>=0 && y<GRID.H;
+
+/* --- Scene setup ----------------------------------------------------- */
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05060a);
+scene.fog = new THREE.FogExp2(0x05060a, 0.035);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 200);
+// well中心に向けた斜め見下ろし
+const CAM_TARGET = new THREE.Vector3(GRID.W/2 - 0.5, GRID.H*0.35, GRID.D/2 - 0.5);
+let camOrbit = { az: Math.PI * 0.2, el: Math.PI * 0.18, r: 22 };
+function applyCamera() {
+  const cx = CAM_TARGET.x + camOrbit.r * Math.cos(camOrbit.el) * Math.sin(camOrbit.az);
+  const cz = CAM_TARGET.z + camOrbit.r * Math.cos(camOrbit.el) * Math.cos(camOrbit.az);
+  const cy = CAM_TARGET.y + camOrbit.r * Math.sin(camOrbit.el);
+  camera.position.set(cx, cy, cz);
+  camera.lookAt(CAM_TARGET);
+}
+applyCamera();
+
+/* --- Lighting -------------------------------------------------------- */
+scene.add(new THREE.AmbientLight(0x3a4a6a, 0.45));
+const key = new THREE.DirectionalLight(0xaecbff, 1.0);
+key.position.set(8, 20, 6);
+scene.add(key);
+const rim = new THREE.PointLight(0xff9be6, 1.6, 40, 2);
+rim.position.set(-6, 3, -4);
+scene.add(rim);
+const fill = new THREE.PointLight(0x7ee7ff, 1.2, 40, 2);
+fill.position.set(8, 4, 10);
+scene.add(fill);
+
+/* --- Well cage ------------------------------------------------------- */
+const wellGroup = new THREE.Group();
+scene.add(wellGroup);
+
+// 底面 — 淡く発光するグリッド
+{
+  const g = new THREE.PlaneGeometry(GRID.W, GRID.D, GRID.W, GRID.D);
+  g.rotateX(-Math.PI / 2);
+  const m = new THREE.MeshStandardMaterial({
+    color: 0x0b1120, roughness: 0.4, metalness: 0.1,
+    emissive: 0x101a30, emissiveIntensity: 0.6,
+  });
+  const floor = new THREE.Mesh(g, m);
+  floor.position.set(GRID.W/2 - 0.5, -0.5, GRID.D/2 - 0.5);
+  wellGroup.add(floor);
+}
+// 枠線
+{
+  const verts = [];
+  const W=GRID.W, D=GRID.D, H=GRID.H;
+  // 縦の柱
+  for (const [x,z] of [[0,0],[W,0],[0,D],[W,D]]) {
+    verts.push(x-0.5, -0.5, z-0.5,  x-0.5, H-0.5, z-0.5);
+  }
+  // 底枠
+  verts.push(-0.5,-0.5,-0.5, W-0.5,-0.5,-0.5);
+  verts.push(W-0.5,-0.5,-0.5, W-0.5,-0.5,D-0.5);
+  verts.push(W-0.5,-0.5,D-0.5, -0.5,-0.5,D-0.5);
+  verts.push(-0.5,-0.5,D-0.5, -0.5,-0.5,-0.5);
+  // 上枠（危険ラインより少し上）
+  const topY = H - 0.5;
+  verts.push(-0.5,topY,-0.5, W-0.5,topY,-0.5);
+  verts.push(W-0.5,topY,-0.5, W-0.5,topY,D-0.5);
+  verts.push(W-0.5,topY,D-0.5, -0.5,topY,D-0.5);
+  verts.push(-0.5,topY,D-0.5, -0.5,topY,-0.5);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  const mat = new THREE.LineBasicMaterial({
+    color: 0x2a3a60, transparent: true, opacity: 0.6,
+  });
+  wellGroup.add(new THREE.LineSegments(geo, mat));
+}
+// 危険ライン（高さH-4くらいで赤線）
+let dangerLine;
+{
+  const dy = GRID.H - 5 - 0.5;
+  const verts = [
+    -0.5, dy, -0.5, GRID.W-0.5, dy, -0.5,
+    GRID.W-0.5, dy, -0.5, GRID.W-0.5, dy, GRID.D-0.5,
+    GRID.W-0.5, dy, GRID.D-0.5, -0.5, dy, GRID.D-0.5,
+    -0.5, dy, GRID.D-0.5, -0.5, dy, -0.5,
+  ];
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  const mat = new THREE.LineBasicMaterial({ color: 0xff6680, transparent: true, opacity: 0.3 });
+  dangerLine = new THREE.LineSegments(geo, mat);
+  wellGroup.add(dangerLine);
+}
+
+/* --- Crystal materials ---------------------------------------------- */
+const crystalMaterials = NOTES.map(n => new THREE.MeshPhysicalMaterial({
+  color: new THREE.Color(n.color),
+  emissive: new THREE.Color(n.color),
+  emissiveIntensity: 0.6,
+  roughness: 0.25,
+  metalness: 0.1,
+  transmission: 0.35,
+  transparent: true,
+  opacity: 0.95,
+  ior: 1.5,
+  thickness: 0.6,
+}));
+
+// 砕け散った破片用(パーティクルごとに個別フェードするのでmakeShardMatでインスタンス化)
+function makeShardMat(noteIdx) {
+  return new THREE.MeshBasicMaterial({
+    color: new THREE.Color(NOTES[noteIdx].color),
+    transparent: true, opacity: 0.9,
+  });
+}
+
+const cubeGeo = new THREE.BoxGeometry(0.92, 0.92, 0.92);
+const edgeGeo = new THREE.EdgesGeometry(cubeGeo);
+// エッジマテリアルは音ごとに共有(メモリリーク防止)
+const edgeMaterials = NOTES.map(n => new THREE.LineBasicMaterial({
+  color: n.color, transparent: true, opacity: 0.65
+}));
+
+function makeCrystalMesh(noteIdx) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(cubeGeo, crystalMaterials[noteIdx]);
+  const edges = new THREE.LineSegments(edgeGeo, edgeMaterials[noteIdx]);
+  g.add(body); g.add(edges);
+  g.userData.noteIdx = noteIdx;
+  return g;
+}
+
+/* --- Ghost piece material (予測着地位置) ---------------------------- */
+const ghostMaterials = NOTES.map(n => new THREE.MeshBasicMaterial({
+  color: new THREE.Color(n.color),
+  transparent: true, opacity: 0.18, wireframe: false, depthWrite: false,
+}));
+const ghostEdgeMat = new THREE.LineBasicMaterial({
+  color: 0x7ee7ff, transparent: true, opacity: 0.35, depthWrite: false,
+});
+function makeGhostMesh(noteIdx) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(cubeGeo, ghostMaterials[noteIdx]);
+  const edges = new THREE.LineSegments(edgeGeo, ghostEdgeMat);
+  g.add(body); g.add(edges);
+  return g;
+}
+
+/* --- Grid state ------------------------------------------------------ */
+const grid = makeGrid();     // [x][z][y]
+const meshGroup = new THREE.Group();
+wellGroup.add(meshGroup);
+const ghostGroup = new THREE.Group();
+wellGroup.add(ghostGroup);
+
+function placeCrystal(x,y,z, noteIdx) {
+  const m = makeCrystalMesh(noteIdx);
+  m.position.set(x, y, z);
+  meshGroup.add(m);
+  grid[x][z][y] = { noteIdx, mesh: m };
+  return m;
+}
+function removeCrystalAt(x,y,z) {
+  const cell = grid[x][z][y];
+  if (!cell) return null;
+  meshGroup.remove(cell.mesh);
+  // ジオメトリ・マテリアルは全部共有なのでdisposeしない
+  grid[x][z][y] = null;
+  return cell;
+}
+
+/* --- Falling piece -------------------------------------------------- */
+// pieceはオフセットの配列 + 基準位置 + noteIdx群
+const piece = {
+  offsets: null,      // [[dx,dy,dz],...]
+  notes: null,        // [noteIdx,...]  offsets と同じ順
+  pos: { x: 0, y: 0, z: 0 },
+  group: null,        // THREE.Group
+};
+
+function shapeBounds(offsets) {
+  let minX= Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity, minZ=Infinity, maxZ=-Infinity;
+  for (const [x,y,z] of offsets) {
+    if (x<minX)minX=x; if (x>maxX)maxX=x;
+    if (y<minY)minY=y; if (y>maxY)maxY=y;
+    if (z<minZ)minZ=z; if (z>maxZ)maxZ=z;
+  }
+  return {minX,maxX,minY,maxY,minZ,maxZ};
+}
+
+function spawnPiece(shape) {
+  const b = shapeBounds(shape);
+  // Yで0以上になるよう正規化
+  const shifted = shape.map(([x,y,z]) => [x, y - b.minY, z]);
+  const sb = shapeBounds(shifted);
+  const notes = shifted.map(() => Math.floor(rng() * NOTES.length));
+
+  // piece group作成
+  const g = new THREE.Group();
+  shifted.forEach((o, i) => {
+    const m = makeCrystalMesh(notes[i]);
+    m.position.set(o[0], o[1], o[2]);
+    g.add(m);
+  });
+  meshGroup.add(g);
+
+  piece.offsets = shifted;
+  piece.notes = notes;
+  piece.group = g;
+  // 真ん中上に配置
+  const cx = Math.floor((GRID.W - (sb.maxX - sb.minX + 1)) / 2) - sb.minX;
+  const cz = Math.floor((GRID.D - (sb.maxZ - sb.minZ + 1)) / 2) - sb.minZ;
+  piece.pos = { x: cx, y: GRID.H - 1 - sb.maxY, z: cz };
+  updatePieceMesh();
+
+  // スポーン位置が既に埋まってたらゲームオーバー(後片付け)
+  if (collides(piece.offsets, piece.pos)) {
+    meshGroup.remove(g);
+    g.clear();
+    piece.group = null;
+    return false;
+  }
+  return true;
+}
+
+function updatePieceMesh() {
+  piece.group.position.set(piece.pos.x, piece.pos.y, piece.pos.z);
+  updateGhost();
+}
+
+function updateGhost() {
+  // ghostGroupを掃除
+  ghostGroup.clear();
+  if (!piece.group) return;
+  // 落下予測
+  let gy = piece.pos.y;
+  while (true) {
+    const test = { x: piece.pos.x, y: gy - 1, z: piece.pos.z };
+    if (collides(piece.offsets, test)) break;
+    gy--;
+  }
+  if (gy === piece.pos.y) return; // 既に着地位置＝表示不要
+  piece.offsets.forEach((o, i) => {
+    const gm = makeGhostMesh(piece.notes[i]);
+    gm.position.set(piece.pos.x + o[0], gy + o[1], piece.pos.z + o[2]);
+    ghostGroup.add(gm);
+  });
+}
+
+function collides(offsets, pos) {
+  for (const [dx,dy,dz] of offsets) {
+    const x = pos.x + dx, y = pos.y + dy, z = pos.z + dz;
+    if (!inBounds(x,y,z)) return true;
+    if (grid[x][z][y]) return true;
+  }
+  return false;
+}
+
+// 軸回転（90度）
+function rotateOffsets(offs, axis, dir = 1) {
+  // axis: 'x', 'y', 'z', dir: +1 or -1
+  const d = dir >= 0 ? 1 : -1;
+  const res = offs.map(([x,y,z]) => {
+    if (axis === 'y') return d > 0 ? [z, y, -x] : [-z, y, x];
+    if (axis === 'x') return d > 0 ? [x, -z, y] : [x, z, -y];
+    if (axis === 'z') return d > 0 ? [-y, x, z] : [y, -x, z];
+    return [x,y,z];
+  });
+  return res;
+}
+
+function tryRotate(axis, dir = 1) {
+  if (!piece.group) return false;
+  const newOffs = rotateOffsets(piece.offsets, axis, dir);
+  // 壁キック：少し位置をずらして当たらない場所を探す
+  const kicks = [[0,0,0],[1,0,0],[-1,0,0],[0,0,1],[0,0,-1],[0,1,0],[2,0,0],[-2,0,0]];
+  for (const [kx,ky,kz] of kicks) {
+    const np = { x: piece.pos.x+kx, y: piece.pos.y+ky, z: piece.pos.z+kz };
+    if (!collides(newOffs, np)) {
+      piece.offsets = newOffs;
+      piece.pos = np;
+      rebuildPieceGroup();
+      updatePieceMesh();
+      sfx.rotate();
+      return true;
+    }
+  }
+  return false;
+}
+
+function rebuildPieceGroup() {
+  // offsetが変わったので子を再配置
+  piece.group.clear();
+  piece.offsets.forEach((o, i) => {
+    const m = makeCrystalMesh(piece.notes[i]);
+    m.position.set(o[0], o[1], o[2]);
+    piece.group.add(m);
+  });
+}
+
+function tryMove(dx, dy, dz) {
+  if (!piece.group) return false;
+  const np = { x: piece.pos.x+dx, y: piece.pos.y+dy, z: piece.pos.z+dz };
+  if (!collides(piece.offsets, np)) {
+    piece.pos = np;
+    updatePieceMesh();
+    if (dx !== 0 || dz !== 0) sfx.move();
+    return true;
+  }
+  return false;
+}
+
+function lockPiece() {
+  // piece.groupを破棄して、盤面に個別crystalを配置
+  meshGroup.remove(piece.group);
+  piece.group.clear();
+  piece.group = null;
+  ghostGroup.clear();
+  const landed = [];
+  piece.offsets.forEach((o, i) => {
+    const x = piece.pos.x + o[0];
+    const y = piece.pos.y + o[1];
+    const z = piece.pos.z + o[2];
+    placeCrystal(x,y,z, piece.notes[i]);
+    landed.push({x,y,z,noteIdx: piece.notes[i]});
+  });
+  sfx.land(piece.notes[0]);
+  return landed;
+}
+
+/* --- Resonance detection -------------------------------------------- */
+// 同じnoteで隣接する塊をflood-fillし、3個以上ならshatter
+function findResonantClusters() {
+  const visited = new Array(GRID.W);
+  for (let x = 0; x < GRID.W; x++) {
+    visited[x] = new Array(GRID.D);
+    for (let z = 0; z < GRID.D; z++) visited[x][z] = new Array(GRID.H).fill(false);
+  }
+  const clusters = []; // {noteIdx, cells:[{x,y,z}]}
+  const DIRS = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  for (let x = 0; x < GRID.W; x++) for (let z = 0; z < GRID.D; z++) for (let y = 0; y < GRID.H; y++) {
+    if (visited[x][z][y] || !grid[x][z][y]) continue;
+    const note = grid[x][z][y].noteIdx;
+    const stack = [[x,y,z]];
+    const cells = [];
+    visited[x][z][y] = true;
+    while (stack.length) {
+      const [cx,cy,cz] = stack.pop();
+      cells.push({x:cx, y:cy, z:cz});
+      for (const [dx,dy,dz] of DIRS) {
+        const nx=cx+dx, ny=cy+dy, nz=cz+dz;
+        if (!inBounds(nx,ny,nz)) continue;
+        if (visited[nx][nz][ny]) continue;
+        const c = grid[nx][nz][ny];
+        if (!c || c.noteIdx !== note) continue;
+        visited[nx][nz][ny] = true;
+        stack.push([nx,ny,nz]);
+      }
+    }
+    if (cells.length >= 3) clusters.push({ noteIdx: note, cells });
+  }
+  return clusters;
+}
+
+// 同じターン(resonance同時発生)で、違う音同士が隣接していたら和音評価
+// NOTES = C D E G A （半音: 0 2 4 7 9）のペンタトニック。
+// 複数クラスタが一斉に砕けた時、含まれるユニーク音集合を「全ルート回転」で
+// 既知コードにマッチさせる。
+const CHORD_NAMES = {
+  // triad
+  '0,4,7':   { name: 'Major',       mul: 2.4 },
+  '0,3,7':   { name: 'Minor',       mul: 2.4 },
+  '0,2,7':   { name: 'Sus2',        mul: 2.2 },
+  '0,5,7':   { name: 'Sus4',        mul: 2.2 },
+  // 3音で意味のあるペンタトニックサブセット
+  '0,2,4':   { name: 'Cluster',     mul: 1.6 },
+  '0,2,5':   { name: 'Floating',    mul: 1.8 },
+  '0,3,5':   { name: 'Quartal',     mul: 2.0 },
+  '0,5,9':   { name: 'Open',        mul: 2.0 },
+  // 4音
+  '0,2,4,7': { name: 'Add9',        mul: 3.2 },
+  '0,4,7,9': { name: 'Major 6',     mul: 3.4 },
+  '0,3,7,10':{ name: 'Minor 7',     mul: 3.4 },
+  '0,2,5,7': { name: 'Quartal 4',   mul: 3.0 },
+  '0,2,4,9': { name: 'Dreamy',      mul: 3.0 },
+  '0,2,7,9': { name: 'Sus Add6',    mul: 3.2 },
+  '0,3,5,8': { name: 'Mysterious',  mul: 3.2 },
+  '0,3,5,7': { name: 'Minor Add',   mul: 3.0 },
+  // 5音（ペンタトニック全成立）
+  '0,2,4,7,9': { name: '★ Pentatonic ★', mul: 6.0 },
+};
+
+function identifyChord(noteIndices) {
+  // noteIndices: [0..4] のインデックス集合
+  const semis = [0,2,4,7,9];
+  const pcs = [...new Set(noteIndices.map(i => semis[i]))].sort((a,b)=>a-b);
+  if (pcs.length < 2) return null;
+  // 各音をルートにして相対半音の組を作り、chord table と照合
+  for (let r = 0; r < pcs.length; r++) {
+    const rel = pcs.map(p => (p - pcs[r] + 12) % 12).sort((a,b)=>a-b).join(',');
+    if (CHORD_NAMES[rel]) {
+      return { ...CHORD_NAMES[rel], notes: noteIndices.slice(), root: pcs[r] };
+    }
+  }
+  // 名前はつかないが複数音あり → 不協和
+  return { name: 'Dissonant', mul: 1.3 + (pcs.length - 1) * 0.3, notes: noteIndices.slice() };
+}
+
+function detectChord(clusters) {
+  if (clusters.length < 2) return null;
+  // 含まれる音インデックスのユニーク集合
+  const noteSet = [...new Set(clusters.map(c => c.noteIdx))];
+  if (noteSet.length < 2) return null;
+  // 隣接チェック：少なくとも2つのクラスタが互いに隣接している必要がある
+  const DIRS = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  let touching = false;
+  outer: for (let i=0; i<clusters.length; i++) {
+    for (let j=i+1; j<clusters.length; j++) {
+      const A = new Set(clusters[i].cells.map(c => `${c.x},${c.y},${c.z}`));
+      const adj = clusters[j].cells.some(c =>
+        DIRS.some(([dx,dy,dz]) => A.has(`${c.x+dx},${c.y+dy},${c.z+dz}`)));
+      if (adj) { touching = true; break outer; }
+    }
+  }
+  if (!touching) return null;
+  return identifyChord(noteSet);
+}
+
+// 消去→重力落下
+function applyGravity() {
+  let moved = false;
+  for (let x = 0; x < GRID.W; x++) for (let z = 0; z < GRID.D; z++) {
+    let writeY = 0;
+    for (let y = 0; y < GRID.H; y++) {
+      if (grid[x][z][y]) {
+        if (writeY !== y) {
+          grid[x][z][writeY] = grid[x][z][y];
+          grid[x][z][writeY].mesh.position.y = writeY;
+          grid[x][z][y] = null;
+          moved = true;
+        }
+        writeY++;
+      }
+    }
+  }
+  return moved;
+}
+
+/* --- Particles (shatter effect) ------------------------------------- */
+const particles = []; // { mesh, vel, life, maxLife }
+const shardGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+
+function spawnShards(x,y,z, noteIdx) {
+  for (let i = 0; i < 10; i++) {
+    const mat = makeShardMat(noteIdx);
+    const m = new THREE.Mesh(shardGeo, mat);
+    m.position.set(x + (rng()-0.5)*0.5, y + (rng()-0.5)*0.5, z + (rng()-0.5)*0.5);
+    const v = new THREE.Vector3((rng()-0.5)*5, rng()*4+1.5, (rng()-0.5)*5);
+    const life = 0.7 + rng()*0.7;
+    particles.push({ mesh: m, vel: v, life, maxLife: life });
+    scene.add(m);
+  }
+}
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      p.mesh.material.dispose();
+      particles.splice(i, 1);
+      continue;
+    }
+    p.mesh.position.x += p.vel.x * dt;
+    p.mesh.position.y += p.vel.y * dt;
+    p.mesh.position.z += p.vel.z * dt;
+    p.vel.y -= 12 * dt; // 重力
+    p.mesh.material.opacity = (p.life / p.maxLife) * 0.9;
+    p.mesh.rotation.x += dt * 4;
+    p.mesh.rotation.y += dt * 3;
+  }
+}
+
+/* --- Audio (Tone.js) ------------------------------------------------- */
+const sfx = (() => {
+  let initialized = false;
+  let reverb, delay, limiter;
+  let synthBell, synthPad, synthClick, synthLow, synthPluck, synthNoise;
+  let padLoop;
+
+  async function init() {
+    if (initialized) return;
+    await Tone.start();
+    initialized = true;
+
+    limiter = new Tone.Limiter(-3).toDestination();
+    const masterVol = new Tone.Volume(-6).connect(limiter);
+    reverb = new Tone.Reverb({ decay: 6, wet: 0.3 }).connect(masterVol);
+    delay  = new Tone.PingPongDelay({ delayTime: '8n', feedback: 0.2, wet: 0.12 }).connect(reverb);
+
+    // 結晶のベル音（共鳴）
+    synthBell = new Tone.PolySynth(Tone.FMSynth, {
+      harmonicity: 2.5,
+      modulationIndex: 8,
+      envelope: { attack: 0.002, decay: 0.4, sustain: 0.0, release: 1.6 },
+      modulationEnvelope: { attack: 0.01, decay: 0.3, sustain: 0.0, release: 0.2 },
+      volume: -6,
+    }).connect(delay);
+
+    // 背景のパッド
+    synthPad = new Tone.PolySynth(Tone.AMSynth, {
+      harmonicity: 1.5,
+      envelope: { attack: 2.5, decay: 0.5, sustain: 0.9, release: 3.5 },
+      volume: -26,
+    }).connect(reverb);
+
+    // 移動のクリック
+    synthClick = new Tone.MembraneSynth({
+      pitchDecay: 0.008, octaves: 2,
+      envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.02 },
+      volume: -22,
+    }).connect(masterVol);
+
+    // 着地の低音
+    synthLow = new Tone.MembraneSynth({
+      pitchDecay: 0.05, octaves: 5,
+      envelope: { attack: 0.001, decay: 0.25, sustain: 0, release: 0.5 },
+      volume: -10,
+    }).connect(reverb);
+
+    // 回転のピック音
+    synthPluck = new Tone.PluckSynth({
+      attackNoise: 2, dampening: 4000, resonance: 0.85,
+      volume: -14,
+    }).connect(delay);
+
+    // 砕けるノイズ
+    synthNoise = new Tone.NoiseSynth({
+      noise: { type: 'white' },
+      envelope: { attack: 0.001, decay: 0.18, sustain: 0 },
+      volume: -20,
+    }).connect(reverb);
+
+    // 環境パッド（薄く常時鳴る）
+    padLoop = new Tone.Loop((time) => {
+      // 積まれている音の重心で変調
+      const notes = dominantNotes();
+      if (notes.length === 0) {
+        synthPad.triggerAttackRelease(['C3','G3'], '2n', time);
+      } else {
+        const freqs = notes.slice(0,3).map(i => NOTES[i].freq.replace('4','3'));
+        synthPad.triggerAttackRelease(freqs, '2n', time);
+      }
+    }, '2n');
+    Tone.Transport.bpm.value = 72;
+    Tone.Transport.start();
+  }
+
+  function dominantNotes() {
+    const counts = new Array(NOTES.length).fill(0);
+    for (let x=0; x<GRID.W; x++) for (let z=0; z<GRID.D; z++) for (let y=0; y<GRID.H; y++) {
+      const c = grid[x][z][y]; if (c) counts[c.noteIdx]++;
+    }
+    return counts.map((c,i)=>({c,i})).filter(o=>o.c>0).sort((a,b)=>b.c-a.c).map(o=>o.i);
+  }
+
+  return {
+    init,
+    move: () => initialized && synthClick.triggerAttackRelease('C2', '64n', undefined, 0.5),
+    rotate: () => initialized && synthPluck.triggerAttackRelease('E5', '32n', undefined, 0.5),
+    land: (noteIdx = 0) => {
+      if (!initialized) return;
+      synthLow.triggerAttackRelease(NOTES[noteIdx].freq.replace('4','2'), '16n');
+      synthNoise.triggerAttackRelease('16n');
+    },
+    shatter: (noteIdx, level = 1) => {
+      if (!initialized) return;
+      const base = NOTES[noteIdx].freq;
+      synthBell.triggerAttackRelease([base, base.replace('4','5')], '2n', undefined, 0.7);
+      synthNoise.triggerAttackRelease('8n');
+    },
+    chord: (chord) => {
+      if (!initialized) return;
+      // 和音をトリガー
+      const freqs = chord.notes.map(i => NOTES[i].freq);
+      synthBell.triggerAttackRelease(freqs, '1n', undefined, 0.9);
+      // 上昇アルペジオ
+      chord.notes.forEach((i, k) => {
+        const t = Tone.now() + 0.06 * k;
+        synthBell.triggerAttackRelease(NOTES[i].freq.replace('4','5'), '16n', t, 0.8);
+      });
+    },
+    gameOver: () => {
+      if (!initialized) return;
+      synthBell.triggerAttackRelease(['C3','F#3'], '1n', undefined, 0.5);
+      synthLow.triggerAttackRelease('C1', '2n');
+    },
+    startPad: () => padLoop && padLoop.start(0),
+    stopPad: () => padLoop && padLoop.stop(),
+  };
+})();
+
+/* --- Postprocessing (bloom) ----------------------------------------- */
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.9, 0.5, 0.2
+);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+/* --- Game state ------------------------------------------------------ */
+const state = {
+  running: false,
+  score: 0,
+  level: 1,
+  lockedCountForLevel: 0,
+  dropAccum: 0,
+  chainShown: 0,
+};
+let nextShape = pick(SHAPES);
+
+function updateHUD() {
+  document.getElementById('score').textContent = state.score;
+  document.getElementById('level').textContent = state.level;
+  document.getElementById('chain').textContent = state.chainShown > 0 ? `×${state.chainShown}` : '—';
+  document.getElementById('next-name').textContent =
+    '◇'.repeat(Math.min(nextShape.length, 4)) || '◆';
+}
+
+function flashChord(name, mul) {
+  const el = document.getElementById('chord-flash');
+  el.textContent = `${name}  ×${mul.toFixed(1)}`;
+  el.classList.remove('show');
+  void el.offsetWidth; // reflow
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1200);
+}
+
+async function resolveResonances() {
+  let chain = 0;
+  while (true) {
+    const clusters = findResonantClusters();
+    if (clusters.length === 0) break;
+    chain++;
+    state.chainShown = chain;
+    updateHUD();
+
+    // スコア：クラスタ毎 (size^2)*10*chain
+    let gain = 0;
+    for (const c of clusters) {
+      gain += c.cells.length * c.cells.length * 10 * chain;
+      sfx.shatter(c.noteIdx, chain);
+      for (const cell of c.cells) {
+        spawnShards(cell.x, cell.y, cell.z, c.noteIdx);
+        removeCrystalAt(cell.x, cell.y, cell.z);
+      }
+    }
+    // 和音判定
+    const chord = detectChord(clusters);
+    if (chord) {
+      gain = Math.floor(gain * chord.mul);
+      sfx.chord(chord);
+      flashChord(chord.name, chord.mul);
+    }
+    state.score += gain;
+    updateHUD();
+
+    await sleep(350);
+    applyGravity();
+    await sleep(160);
+  }
+  state.chainShown = 0;
+  updateHUD();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function afterLock() {
+  await resolveResonances();
+  state.lockedCountForLevel++;
+  if (state.lockedCountForLevel >= 10) {
+    state.lockedCountForLevel = 0;
+    state.level++;
+    updateHUD();
+  }
+  const shape = nextShape;
+  nextShape = pick(SHAPES);
+  updateHUD();
+  const ok = spawnPiece(shape);
+  if (!ok) gameOver();
+}
+
+function dropIntervalMs() {
+  return Math.max(120, BASE_DROP_MS * Math.pow(0.86, state.level - 1));
+}
+
+function hardDrop() {
+  if (!piece.group) return;
+  while (tryMove(0,-1,0)) {}
+  lockAndProceed();
+}
+
+async function lockAndProceed() {
+  if (!piece.group) return;
+  lockPiece();
+  await afterLock();
+}
+
+function gameOver() {
+  state.running = false;
+  sfx.gameOver();
+  document.getElementById('final-score').textContent = state.score;
+  document.getElementById('final-chord').textContent = `level ${state.level} まで到達`;
+  document.getElementById('over-overlay').classList.remove('hide');
+}
+
+function resetGame() {
+  // grid clear
+  for (let x = 0; x < GRID.W; x++) for (let z = 0; z < GRID.D; z++) for (let y = 0; y < GRID.H; y++) {
+    if (grid[x][z][y]) removeCrystalAt(x,y,z);
+  }
+  if (piece.group) { meshGroup.remove(piece.group); piece.group.clear(); piece.group = null; }
+  ghostGroup.clear();
+  state.score = 0; state.level = 1; state.lockedCountForLevel = 0; state.dropAccum = 0;
+  state.chainShown = 0; state.running = true;
+  const first = pick(SHAPES);
+  nextShape = pick(SHAPES);
+  updateHUD();
+  spawnPiece(first);
+}
+
+/* --- Camera-relative axes -------------------------------------------- */
+// カメラの方位角を90度単位に丸めて、「プレイヤーから見た」前後左右を
+// ワールドの(X, Z)軸移動に変換する。回しても直感と合うように。
+function camAxes() {
+  const az = ((camOrbit.az % (Math.PI*2)) + Math.PI*2) % (Math.PI*2);
+  const q = Math.round(az / (Math.PI/2)) % 4;   // 0,1,2,3
+  // カメラは target から +Z側(正面) or +X(右)... の象限にいる。
+  // q=0: camera at +Z → forward(away)= -Z, right = +X
+  // q=1: camera at +X → forward = -X,     right = -Z
+  // q=2: camera at -Z → forward = +Z,     right = -X
+  // q=3: camera at -X → forward = +X,     right = +Z
+  const FWD = [ [0,-1], [-1,0], [0,1], [1,0] ];   // [dx,dz]
+  const RIGHT=[ [1,0],  [0,-1], [-1,0],[0,1] ];
+  return { fwd: FWD[q], right: RIGHT[q] };
+}
+
+/* --- Input: keyboard ------------------------------------------------- */
+window.addEventListener('keydown', (e) => {
+  if (!state.running) return;
+  const k = e.key.toLowerCase();
+  let handled = true;
+  const ax = camAxes();
+  switch (k) {
+    case 'a': case 'arrowleft':  tryMove(-ax.right[0], 0, -ax.right[1]); break;
+    case 'd': case 'arrowright': tryMove( ax.right[0], 0,  ax.right[1]); break;
+    case 'w': case 'arrowup':    tryMove( ax.fwd[0],   0,  ax.fwd[1]);   break;
+    case 's': case 'arrowdown':  tryMove(-ax.fwd[0],   0, -ax.fwd[1]);   break;
+    case ' ':                    hardDrop(); break;
+    case 'q':                    tryRotate('y', -1); break;  // 左回転
+    case 'e':                    tryRotate('y',  1); break;  // 右回転
+    case 'r':                    tryRotate('x',  1); break;  // ピッチ
+    case 'f':                    tryRotate('z',  1); break;  // ロール
+    default: handled = false;
+  }
+  if (handled) e.preventDefault();
+});
+
+/* --- Input: mouse / touch ------------------------------------------- */
+// 操作:
+//   左ドラッグ            → ピース水平移動 (蓄積28pxで1セル)
+//   左クリック(短押し)    → Y軸 時計回り回転
+//   右クリック(短押し)    → Y軸 反時計回り回転
+//   Shift+左ドラッグ      → カメラ軌道
+//   ホイール              → カメラ距離
+//   ダブルクリック        → ハードドロップ
+const mouse = {
+  dragging: false, button: 0, lastX: 0, lastY: 0,
+  downTime: 0, moved: false, accumX: 0, accumY: 0,
+  camMode: false, lastClickTime: 0,
+};
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (!state.running) return;
+  mouse.dragging = true;
+  mouse.button = e.button;
+  mouse.lastX = e.clientX; mouse.lastY = e.clientY;
+  mouse.downTime = performance.now();
+  mouse.moved = false;
+  mouse.accumX = 0; mouse.accumY = 0;
+  mouse.camMode = e.shiftKey || e.button === 1;
+  renderer.domElement.setPointerCapture(e.pointerId);
+});
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (!mouse.dragging) return;
+  const dx = e.clientX - mouse.lastX;
+  const dy = e.clientY - mouse.lastY;
+  if (Math.abs(dx) + Math.abs(dy) > 4) mouse.moved = true;
+
+  if (mouse.camMode) {
+    camOrbit.az -= dx * 0.006;
+    camOrbit.el = Math.max(0.04, Math.min(Math.PI*0.48, camOrbit.el + dy * 0.004));
+    applyCamera();
+  } else if (mouse.button === 0) {
+    // ピース水平移動（カメラ相対）
+    mouse.accumX += dx;
+    mouse.accumY += dy;
+    const stepPx = 28;
+    const ax = camAxes();
+    // ドラッグの+X(画面右) → カメラの右方向, +Y(画面下) → カメラの手前方向（=後ろ）
+    while (mouse.accumX > stepPx)  { tryMove( ax.right[0], 0,  ax.right[1]); mouse.accumX -= stepPx; }
+    while (mouse.accumX < -stepPx) { tryMove(-ax.right[0], 0, -ax.right[1]); mouse.accumX += stepPx; }
+    while (mouse.accumY > stepPx)  { tryMove(-ax.fwd[0],   0, -ax.fwd[1]);   mouse.accumY -= stepPx; }
+    while (mouse.accumY < -stepPx) { tryMove( ax.fwd[0],   0,  ax.fwd[1]);   mouse.accumY += stepPx; }
+  }
+  mouse.lastX = e.clientX; mouse.lastY = e.clientY;
+});
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!mouse.dragging) return;
+  mouse.dragging = false;
+  const t = performance.now();
+  const wasClick = !mouse.moved && (t - mouse.downTime < 260);
+  if (wasClick && !mouse.camMode) {
+    // ダブルクリック判定を先に
+    if (t - mouse.lastClickTime < 280 && state.running) {
+      hardDrop();
+      mouse.lastClickTime = 0;
+    } else {
+      if (mouse.button === 2) tryRotate('y', -1);
+      else                    tryRotate('y',  1);
+      mouse.lastClickTime = t;
+    }
+  }
+});
+renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+renderer.domElement.addEventListener('wheel', (e) => {
+  camOrbit.r = Math.max(12, Math.min(40, camOrbit.r + e.deltaY * 0.015));
+  applyCamera();
+  e.preventDefault();
+}, { passive: false });
+
+/* --- Main loop ------------------------------------------------------- */
+let lastT = performance.now();
+function tick(now) {
+  const dt = Math.min(0.05, (now - lastT) / 1000);
+  lastT = now;
+
+  if (state.running && piece.group) {
+    state.dropAccum += dt * 1000;
+    if (state.dropAccum >= dropIntervalMs()) {
+      state.dropAccum = 0;
+      if (!tryMove(0,-1,0)) {
+        lockAndProceed();
+      }
+    }
+  }
+
+  // 軽い呼吸アニメ
+  if (piece.group) {
+    const t = now * 0.003;
+    piece.group.children.forEach((c, i) => {
+      c.rotation.y = Math.sin(t + i) * 0.05;
+    });
+  }
+  // 全体の発光を脈動
+  bloom.strength = 0.85 + Math.sin(now * 0.001) * 0.08;
+
+  animateTitleDemos(now);
+  updateParticles(dt);
+  composer.render();
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* --- Resize ---------------------------------------------------------- */
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloom.resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+});
+
+/* --- Start / retry buttons ------------------------------------------ */
+document.getElementById('start-btn').addEventListener('click', async () => {
+  await sfx.init();
+  sfx.startPad();
+  document.getElementById('title-overlay').classList.add('hide');
+  titleGroup.visible = false;
+  resetGame();
+});
+document.getElementById('retry-btn').addEventListener('click', () => {
+  document.getElementById('over-overlay').classList.add('hide');
+  resetGame();
+});
+
+/* --- Title demo crystals -------------------------------------------- */
+const titleGroup = new THREE.Group();
+scene.add(titleGroup);
+const titleDemos = [];
+for (let i = 0; i < 5; i++) {
+  const demo = makeCrystalMesh(i);
+  demo.position.set(
+    GRID.W/2 - 0.5 + Math.cos(i) * 2.4,
+    GRID.H*0.4 + Math.sin(i * 1.3) * 0.6,
+    GRID.D/2 - 0.5 + Math.sin(i) * 2.4,
+  );
+  titleGroup.add(demo);
+  titleDemos.push({ mesh: demo, phase: i });
+}
+function animateTitleDemos(now) {
+  if (!titleGroup.visible) return;
+  const t = now * 0.001;
+  titleDemos.forEach(({mesh, phase}) => {
+    mesh.rotation.y = t * 0.5 + phase;
+    mesh.rotation.x = Math.sin(t + phase) * 0.3;
+    mesh.position.y = GRID.H*0.4 + Math.sin(t * 0.8 + phase) * 1.2;
+  });
+}
+
+updateHUD();
+</script>
+</body>
+</html>
