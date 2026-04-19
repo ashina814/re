@@ -138,19 +138,43 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/",
-    "tone": "https://unpkg.com/tone@14.8.49/build/esm/index.js" // ← ★ここです！
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/",
+    "tone": "https://esm.sh/tone@14.8.49"
   }
 }
 </script>
-  
+
+<!-- エラー表示 (デバッグ用) -->
+<script>
+  window.addEventListener('error', (e) => {
+    const el = document.getElementById('err-box') || (() => {
+      const d = document.createElement('div');
+      d.id = 'err-box';
+      d.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99;background:#300;color:#fcc;font-family:monospace;font-size:12px;padding:10px;white-space:pre-wrap;max-height:60%;overflow:auto;border-bottom:1px solid #f66';
+      document.body.appendChild(d);
+      return d;
+    })();
+    el.textContent += `[ERROR] ${e.message}\n  at ${e.filename}:${e.lineno}:${e.colno}\n`;
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const el = document.getElementById('err-box') || (() => {
+      const d = document.createElement('div');
+      d.id = 'err-box';
+      d.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99;background:#300;color:#fcc;font-family:monospace;font-size:12px;padding:10px;white-space:pre-wrap;max-height:60%;overflow:auto;border-bottom:1px solid #f66';
+      document.body.appendChild(d);
+      return d;
+    })();
+    el.textContent += `[PROMISE] ${e.reason && (e.reason.stack || e.reason.message || e.reason)}\n`;
+  });
+</script>
+
 <script type="module">
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass }    from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass }    from 'three/addons/postprocessing/OutputPass.js';
+import { EffectComposer }   from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }       from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }  from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }       from 'three/addons/postprocessing/OutputPass.js';
 import * as Tone from 'tone';
 
 /* ====================================================================
@@ -1104,8 +1128,13 @@ window.addEventListener('resize', () => {
 
 /* --- Start / retry buttons ------------------------------------------ */
 document.getElementById('start-btn').addEventListener('click', async () => {
-  await sfx.init();
-  sfx.startPad();
+  try {
+    await sfx.init();
+    sfx.startPad();
+  } catch (err) {
+    console.error('audio init failed:', err);
+    // 音が出なくてもゲームは続行
+  }
   document.getElementById('title-overlay').classList.add('hide');
   titleGroup.visible = false;
   resetGame();
